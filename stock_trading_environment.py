@@ -69,26 +69,21 @@ class StockTradingEnvironment(gym.Env):
         return self.get_observation()
     
     def step(self, action):
-        returns = 0
+        step_reward = 0
         for i in range(self.trade_period):
             return1 = self.df.loc[self.df.index[self._current_tick], 'returns1']
             return2 = self.df.loc[self.df.index[self._current_tick], 'returns2']
             if self._position == Positions.Short:
-                returns += -0.5 * return1 + 0.5 * return2
+                step_reward += -0.5 * return1 + 0.5 * return2
             elif self._position == Positions.Long:
-                returns += 0.5 * return1 - 0.5 * return2
+                step_reward += 0.5 * return1 - 0.5 * return2
             self._current_tick += 1
             self._positionhistory.append(self._position.value)
         
-        a = np.array(self._positionhistory[-self.trade_period:])
-        b = np.array(self.df.iloc[self._current_tick-self.trade_period:self._current_tick, self.df.columns.get_loc('position1')].values) + 1
-        dist = norm(a-b)
-        
-        step_reward = returns
         self._position = action
         self._done = (self._current_tick + self.trade_period > self.df.shape[0])
         self._total_reward += step_reward
-        self._total_return += returns
+        self._total_return += step_reward
         observation = self.get_observation()
         info = dict(
             total_reward = self._total_reward,
@@ -108,9 +103,58 @@ class StockTradingEnvironment(gym.Env):
         end_index = start_index + len(self._positionhistory)
         mask = pd.Series(self._positionhistory, index=self.df.index[start_index:end_index])
         
-        self.plot_zscore(mask)
-        self.plot_ratios(mask)
+        self.plot_returns_delta(mask)
         self.plot_prices(mask)
+        
+    def plot_returns(self, mask):
+        plt.figure(figsize=(12,6))
+        
+        start_index = self.window_size
+        end_index = start_index + len(self._positionhistory)
+        zscore = self.df.iloc[start_index:end_index, self.df.columns.get_loc('zscore')]
+        zscore.plot()
+        
+        buy = zscore.copy()
+        sell = zscore.copy()
+        
+        buy[mask==Positions.Short.value] = -np.inf
+        sell[mask==Positions.Long.value] = -np.inf
+        buy[mask==Positions.Flat.value] = -np.inf
+        sell[mask==Positions.Flat.value] = -np.inf
+        
+        buy.plot(color='r', linestyle='None', marker='^')
+        sell.plot(color='g', linestyle='None', marker='^')
+        x1, x2, y1, y2 = plt.axis()
+        plt.axis((x1, x2, zscore.min(), zscore.max()))
+        
+        plt.legend(['Zscore', 'Buy Signal', 'Sell Signal'])
+        plt.show()
+
+    def plot_returns_delta(self, mask):
+        plt.figure(figsize=(12,6))
+        
+        start_index = self.window_size
+        end_index = start_index + len(self._positionhistory)
+        return1 = self.df.iloc[start_index:end_index, self.df.columns.get_loc('return1')]
+        return2 = self.df.iloc[start_index:end_index, self.df.columns.get_loc('return2')]
+        returns_delta = return1 - return2
+        returns_delta.plot()
+        
+        buy = returns_delta.copy()
+        sell = returns_delta.copy()
+        
+        buy[mask==Positions.Short.value] = -np.inf
+        sell[mask==Positions.Long.value] = -np.inf
+        buy[mask==Positions.Flat.value] = -np.inf
+        sell[mask==Positions.Flat.value] = -np.inf
+        
+        buy.plot(color='r', linestyle='None', marker='^')
+        sell.plot(color='g', linestyle='None', marker='^')
+        x1, x2, y1, y2 = plt.axis()
+        plt.axis((x1, x2, zscore.min(), zscore.max()))
+        
+        plt.legend(['Returns Delta', 'Buy Signal', 'Sell Signal'])
+        plt.show()
 
     def plot_zscore(self, mask):
         plt.figure(figsize=(12,6))
